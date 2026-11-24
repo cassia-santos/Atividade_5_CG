@@ -23,5 +23,3 @@ O jogo usa Python, GLFW, ModernGL, NumPy, PyGLM e Pillow. A placa gráfica e o d
 | Esc | Fechar a janela |
 
 O placar verde à esquerda e as vidas azuis à direita aparecem dentro da cena. O título da janela mostra o estado atual, a câmera, a iluminação, o VSync e o FPS.
-
-O PDF acompanha o ZIP de entrega. No repositório, o fonte do relatório está em `relatorio/`. Para compilar no Overleaf, envie `main.tex` e os PNGs para o mesmo projeto. Os PNGs podem ficar ao lado de `main.tex` ou na pasta `capturas/`. Selecione pdfLaTeX.
