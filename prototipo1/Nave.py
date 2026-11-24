@@ -25,5 +25,5 @@ class Nave:
     def atirar(self):
         if len(self.disparos) >= 3:
             return
-        # A ponta da geometria da nave fica a 0,28 da origem.
+        # O disparo começa logo à frente da nave.
         self.disparos.append(Disparo(self.x + 0.28, self.y, self.z))

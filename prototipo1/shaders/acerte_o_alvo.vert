@@ -2,19 +2,13 @@
 
 layout(location = 0) in vec4 vPosition;
 
-uniform vec2 u_escala;
-uniform vec2 u_deslocamento;
-uniform float u_angulo;
+uniform mat4 u_modelo;
 uniform vec4 u_cor;
 
 out vec4 v2fcolor;
 
 void main() {
-    vec2 p = vPosition.xy * u_escala;
-    float c = cos(u_angulo);
-    float s = sin(u_angulo);
-    vec2 transformado = vec2(c * p.x - s * p.y,
-                              s * p.x + c * p.y);
-    gl_Position = vec4(transformado + u_deslocamento, vPosition.zw);
+    // As geometrias 2D usam diretamente o plano normalizado da tela.
+    gl_Position = u_modelo * vPosition;
     v2fcolor = u_cor;
 }
