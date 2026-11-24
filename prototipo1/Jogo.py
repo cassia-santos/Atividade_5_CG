@@ -101,9 +101,10 @@ class Jogo:
         for asteroide in atingidos | perdidos:
             self.gerenciador.reposicionar(asteroide)
 
-        if self.pontos >= self.META:
+        self.pontos = min(self.pontos, self.META)
+        self.vidas = max(self.vidas, 0)
+        if self.pontos == self.META:
             self.venceu = True
             self.estado = self.FIM
-        elif self.vidas <= 0:
-            self.vidas = 0
+        elif self.vidas == 0:
             self.estado = self.FIM

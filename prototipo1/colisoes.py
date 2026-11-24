@@ -3,9 +3,9 @@
 from math import sqrt
 
 
-def segmento_circulo(inicio, fim, centro, raio):
-    """Retorna o primeiro instante t em [0, 1] em que o segmento toca o círculo."""
-    dx, dy, dz = fim[0] - inicio[0], fim[1] - inicio[1], fim[2] - inicio[2] 
+def segmento_esfera(inicio, fim, centro, raio):
+    """Retorna o primeiro instante t em [0, 1] em que o segmento toca a esfera."""
+    dx, dy, dz = fim[0] - inicio[0], fim[1] - inicio[1], fim[2] - inicio[2]
     ox, oy, oz = inicio[0] - centro[0], inicio[1] - centro[1], inicio[2] - centro[2]
     a = dx * dx + dy * dy + dz * dz
     c = ox * ox + oy * oy + oz * oz - raio * raio
@@ -22,7 +22,7 @@ def segmento_circulo(inicio, fim, centro, raio):
 
 
 def segmento_caixa(inicio, fim, limites):
-    """Interseção do segmento com caixa (xmin, xmax, ymin, ymax)."""
+    """Interseção do segmento com caixa (xmin, xmax, ymin, ymax, zmin, zmax)."""
     xmin, xmax, ymin, ymax, zmin, zmax = limites
     t_entrada, t_saida = 0.0, 1.0
     for origem, destino, minimo, maximo in (
@@ -52,7 +52,7 @@ def disparo_atinge_asteroide(disparo_antes, disparo_depois,
     fim = (disparo_depois[0] - asteroide_depois[0],
            disparo_depois[1] - asteroide_depois[1],
            disparo_depois[2] - asteroide_depois[2])
-    return segmento_circulo(inicio, fim, (0.0, 0.0, 0.0), raio_total)
+    return segmento_esfera(inicio, fim, (0.0, 0.0, 0.0), raio_total)
 
 
 def asteroide_atinge_nave(asteroide_antes, asteroide_depois,

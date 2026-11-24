@@ -1,7 +1,8 @@
 """Jogo 3D de asteroides — Computação Gráfica.
 
-Execução: python main.py (a partir desta pasta)
-Requisitos: Python 3, glfw, moderngl, numpy e OpenGL 4.0 Core.
+Execução: na raiz do repositório, com o ambiente da disciplina ativado,
+  python prototipo1/main.py
+Requisitos: Python 3, GLFW, ModernGL, NumPy, PyGLM, Pillow e OpenGL 4.0 Core.
 
 Teclas:
   ENTER         iniciar ou reiniciar depois do fim
@@ -11,8 +12,9 @@ Teclas:
   SETA DIR.     mover a nave para direita (segurar)
   ESPAÇO        disparar
   P             pausar ou retomar
-  C             alternar camera entre a seguidora e a geral
-  Roda do mouse aproxima ou afasta a camera
+  C             alternar entre visão geral e câmera seguidora
+  Roda do mouse aproximar ou afastar a câmera
+  L             alternar luzes (ambas, direcional, pontual)
   V             ligar ou desligar VSync
   ESC           sair
 
@@ -29,26 +31,27 @@ import glm
 import moderngl
 import numpy as np
 
-
 from Jogo import Jogo
-from malha import Malha
-from camera import Camera  
+from camera import Camera
+from cena3d import Cena3D
 
 SHADERS = Path(__file__).parent / "shaders"
-MODELOS = Path(__file__).parent / "off"
-LADO = 800  # viewport quadrado: mesmas unidades em x e y
+LADO = 800
 
-FUNDO = (0.04, 0.05, 0.09, 1.0)
+FUNDO = (0.025, 0.035, 0.063, 1.0)
+ESTRELAS = (0.40, 0.49, 0.64, 1.0)
 CINZA = (0.72, 0.76, 0.82, 1.0)
 AZUL = (0.15, 0.55, 0.95, 1.0)
 VERDE = (0.20, 0.84, 0.49, 1.0)
 VERMELHO = (0.94, 0.28, 0.27, 1.0)
 INATIVO = (0.22, 0.26, 0.34, 1.0)
 
-F_NAVE = 0.233
-AVANCO_CAMERA = 0.8
-ZOOM_MIN, ZOOM_MAX = 1.6, 6.0
+AVANCO_CAMERA = 0.70
+ZOOM_MIN = (3.80, 1.85)
+ZOOM_MAX = 6.0
+NOMES_CAMERA = ("geral", "seguidora")
 PASSO_ZOOM = 0.25
+
 
 def curva_circulo(n=48):
     """Centro, pontos da circunferência e primeiro ponto repetido: leque."""
@@ -60,7 +63,11 @@ def curva_circulo(n=48):
 
 def criar_geometrias(ctx, programa):
     """Cria todos os VBOs, EBOs e VAOs uma única vez, antes do laço."""
+    estrelas = np.ones((105, 4), dtype="f4")
+    estrelas[:, :2] = np.random.default_rng(5).uniform(-1, 1, (len(estrelas), 2))
+    estrelas[:, 2] = 0
     dados = {
+        "estrelas": estrelas,
         "triangulo": np.array([
             -0.2, 0.2, 0.0, 1.0,
             -0.2, -0.2, 0.0, 1.0,
@@ -83,35 +90,12 @@ def criar_geometrias(ctx, programa):
             programa, [(buffer, "4f", "vPosition")],
             index_buffer=indices if nome == "retangulo" else None,
         )
-    return vaos, [*vaos.values(), *buffers.values(), indices]
+    return vaos, [*buffers.values(), indices, *vaos.values()]
 
 
 def erro_glfw(codigo, descricao):
     print(f"GLFW [{codigo}]: {descricao}", file=sys.stderr)
 
-
-def criar_malha(ctx, programa, caminho):
-    malha = Malha(caminho)
-    dados, indices = malha.suave()
-    vbo = ctx.buffer(dados.tobytes())
-    ebo = ctx.buffer(indices.tobytes())
-    vao = ctx.vertex_array(programa, [(vbo, "3f 3f", "vPosition", "vNormal")], index_buffer=ebo)
-    return malha, vao, [vao, vbo, ebo]
-
-def matriz_normal(modelo):
-    """Inversa transposta do bloco 3x3 da matriz de modelo."""
-    return glm.transpose(glm.inverse(glm.mat3(modelo)))
-
-def enviar(prog, **uniformes):
-    """Envia os uniformes que o programa declara e ignora os outros,
-    como vao_de faz com os atributos."""
-    for nome, valor in uniformes.items():
-        if nome not in prog:
-            continue
-        if isinstance(valor, (glm.mat3, glm.mat4)):
-            prog[nome].write(valor.to_bytes())    # por colunas
-        else:
-            prog[nome].value = valor
 
 def main():
     glfw.set_error_callback(erro_glfw)
@@ -133,7 +117,7 @@ def main():
         glfw.make_context_current(janela)
         glfw.swap_interval(1)
         ctx = moderngl.create_context(require=400)
-        
+
         programa = ctx.program(
             vertex_shader=(SHADERS / "acerte_o_alvo.vert").read_text(encoding="utf-8"),
             fragment_shader=(SHADERS / "basico.frag").read_text(encoding="utf-8"),
@@ -141,22 +125,19 @@ def main():
         recursos.append(programa)
         vaos, geometrias = criar_geometrias(ctx, programa)
         recursos.extend(geometrias)
-        
-        programa3d = ctx.program(
-            vertex_shader=(SHADERS / "normais.vert").read_text(encoding="utf-8"),
-            fragment_shader=(SHADERS / "normais.frag").read_text(encoding="utf-8"),
+
+        cena3d = Cena3D(ctx, recursos)
+        ctx.front_face = "ccw"
+        ctx.cull_face = "back"
+
+        cameras = (
+            Camera(distancia=4.30, direcao=(-0.23, 0.58, 0.91),
+                   centro=(0.15, -0.08, 0.0)),
+            Camera(distancia=2.0, direcao=(-1.0, 0.38, 0.0)),
         )
-        
-        recursos.append(programa3d)
-        malha_nave, vao_nave, rec = criar_malha(ctx, programa3d, MODELOS / "nave.off")
-        recursos.extend(rec)
-        malha_esfera, vao_esfera, rec = criar_malha(ctx, programa3d, MODELOS / "esfera.off")
-        recursos.extend(rec)
-        
-        cameras = [Camera(distancia=2.6, direcao=(-0.7, 0.6, 0.7)), Camera(distancia=1.6, direcao=(-1.0, 0.3, 0.0))]                            
         modo_camera = 0
         tela = [LADO, LADO]
-        
+
         jogo = Jogo()
         vsync = True
 
@@ -172,28 +153,30 @@ def main():
                 jogo.atirar()
             elif key == glfw.KEY_P:
                 jogo.alternar_pausa()
-            elif key == glfw.KEY_C:
+            elif key == glfw.KEY_C and jogo.estado != Jogo.PAUSADO:
                 modo_camera = 1 - modo_camera
+            elif key == glfw.KEY_L:
+                cena3d.alternar_luz()
             elif key == glfw.KEY_V:
                 vsync = not vsync
                 glfw.swap_interval(1 if vsync else 0)
 
-        
-
-        def redimensionou(window, largura, altura):
+        def redimensionou(_window, largura, altura):
             largura, altura = max(1, largura), max(1, altura)
             ctx.viewport = (0, 0, largura, altura)
             tela[:] = [largura, altura]
             for camera in cameras:
-                camera.aspecto = largura/altura
-           
-        def roda(window, dx, dy):
+                camera.aspecto = largura / altura
+
+        def roda(_window, _dx, dy):
+            if jogo.estado == Jogo.PAUSADO:
+                return
             camera = cameras[modo_camera]
             camera.distancia = float(np.clip(
-                camera.distancia - dy * PASSO_ZOOM, ZOOM_MIN, ZOOM_MAX))
-         
+                camera.distancia - dy * PASSO_ZOOM, ZOOM_MIN[modo_camera], ZOOM_MAX))
+
         def viewport_quadrado():
-            # Como o placar é desenhado em coordenadas da tela: um viewport quadrado e centrado evita que ele estique.
+            # O viewport quadrado evita distorcer os símbolos do placar.
             largura, altura = tela
             lado = min(largura, altura)
             ctx.viewport = ((largura - lado) // 2, (altura - lado) // 2,
@@ -206,28 +189,12 @@ def main():
 
         def desenhar(nome, escala, posicao, cor, modo=moderngl.TRIANGLES,
                      angulo=0.0, vertices=-1, primeiro=0):
-            programa["u_escala"].value = escala
-            programa["u_deslocamento"].value = posicao
-            programa["u_angulo"].value = angulo
+            modelo = glm.translate(glm.mat4(1), glm.vec3(*posicao, 0))
+            modelo = glm.rotate(modelo, angulo, glm.vec3(0, 0, 1))
+            modelo = glm.scale(modelo, glm.vec3(*escala, 1))
+            programa["u_modelo"].write(modelo.to_bytes())
             programa["u_cor"].value = cor
             vaos[nome].render(mode=modo, vertices=vertices, first=primeiro)
-            
-        def desenhar_malha(vao, modelo):
-            enviar(programa3d, u_modelo=modelo, u_normal=matriz_normal(modelo))
-            vao.render(moderngl.TRIANGLES)
-
-        def desenhar_nave(posicao, F=F_NAVE):
-            modelo = (glm.translate(glm.mat4(1.0), glm.vec3(*posicao))
-                      * glm.rotate(glm.mat4(1.0), glm.radians(-90.0),
-                                   glm.vec3(0.0, 0.0, 1.0))
-                      * malha_nave.matriz_enquadramento(F))
-            desenhar_malha(vao_nave, modelo)
-
-        def desenhar_asteroide(posicao, raio):
-            modelo = (glm.translate(glm.mat4(1.0), glm.vec3(*posicao))
-                      * malha_esfera.matriz_enquadramento(raio))
-            desenhar_malha(vao_esfera, modelo)
-
 
         def desenhar_hud():
             # A mesma geometria de retângulo representa placar e vidas.
@@ -241,36 +208,28 @@ def main():
                          (0.68 + i * 0.075, 0.91), cor)
 
         def desenhar_cena():
-            ctx.viewport = (0, 0, *tela) 
+            ctx.viewport = (0, 0, *tela)
             ctx.clear(*FUNDO)
+            desenhar("estrelas", (1.0, 1.0), (0.0, 0.0), ESTRELAS,
+                     modo=moderngl.POINTS)
+
+            camera = cameras[modo_camera]
+            if modo_camera == 1:
+                x, y, z = jogo.nave.obter_posicao()
+                camera.centro = glm.vec3(x + AVANCO_CAMERA, y, z)
+
+            ctx.enable(moderngl.DEPTH_TEST | moderngl.CULL_FACE)
+            cena3d.desenhar(jogo, camera)
+            ctx.disable(moderngl.DEPTH_TEST | moderngl.CULL_FACE)
+
+            viewport_quadrado()
+            desenhar("retangulo", (1.92, 0.004), (0.0, 0.83), INATIVO)
+            desenhar_hud()
             if jogo.estado == Jogo.INICIO:
-                viewport_quadrado()
                 desenhar("triangulo", (0.65, 1.2), (0.0, 0.0), VERDE)
                 desenhar("circulo", (0.52, 0.52), (0.0, 0.0), CINZA,
                          modo=moderngl.LINE_LOOP, vertices=48, primeiro=1)
                 return
-            
-            camera = cameras[modo_camera]
-            if camera is cameras[1]:
-                x, y, z = jogo.nave.obter_posicao()
-                camera.centro = glm.vec3(x + AVANCO_CAMERA, y, z)
-            enviar(programa3d, u_visao=camera.visao(), u_projecao=camera.projecao())
-            
-            ctx.enable(moderngl.DEPTH_TEST | moderngl.CULL_FACE)
-            visiveis = [a for a in jogo.gerenciador.asteroides if a.x - a.raio <= 1.0]
-            
-            for asteroide in visiveis:
-                desenhar_asteroide(asteroide.obter_posicao(),
-                                   asteroide.raio_visual)
-            
-            for disparo in jogo.nave.disparos:
-               desenhar_asteroide(disparo.obter_posicao(), disparo.RAIO)
-            desenhar_nave(jogo.nave.obter_posicao())
-            
-            ctx.disable(moderngl.DEPTH_TEST | moderngl.CULL_FACE)
-            viewport_quadrado() 
-            desenhar("retangulo", (1.92, 0.004), (0.0, 0.83), INATIVO)
-            desenhar_hud()
 
             if jogo.estado == Jogo.PAUSADO:
                 for x in (-0.08, 0.08):
@@ -289,7 +248,7 @@ def main():
         instante_anterior = glfw.get_time()
         marco, quadros = instante_anterior, 0
         estado_anterior = jogo.estado
-        
+
         while not glfw.window_should_close(janela):
             glfw.poll_events()
             agora = glfw.get_time()
@@ -317,7 +276,8 @@ def main():
                 glfw.set_window_title(
                     janela,
                     f"Asteroides | {estado} | {jogo.pontos}/{jogo.META} pontos | "
-                    f"{jogo.vidas} vidas | VSync {'ON' if vsync else 'OFF'} | "
+                    f"{jogo.vidas} vidas | câmera {NOMES_CAMERA[modo_camera]} | "
+                    f"luz {cena3d.MODOS_LUZ[cena3d.modo_luz]} | VSync {'ON' if vsync else 'OFF'} | "
                     f"{quadros / (agora - marco):.1f} FPS"
                 )
                 marco, quadros = agora, 0
